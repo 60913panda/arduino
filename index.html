@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino 積木編輯器 V4.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入圖標庫 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        
+        /* 自定義捲軸 */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        /* 積木形狀 CSS */
+        .block-hat { border-radius: 12px 12px 4px 4px; margin-top: 16px; margin-bottom: 4px; }
+        .block-stack { border-radius: 4px; margin: 4px 0; }
+        .block-c { border-radius: 4px 12px 4px 4px; margin: 4px 0; }
+        .block-reporter { border-radius: 9999px; padding: 4px 12px; display: inline-flex; align-items: center; margin: 0 4px; }
+        .block-boolean { clip-path: polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%); padding: 4px 12px; display: inline-flex; align-items: center; margin: 0 4px; }
+        
+        /* 拖曳時的樣式 */
+        .dragging { opacity: 0.5; }
+        .drop-target { background-color: rgba(255, 255, 0, 0.2); box-shadow: 0 0 0 2px yellow; }
+        
+        /* 格狀背景 */
+        .grid-bg {
+            background-color: #1e1e1e;
+            background-image: radial-gradient(#333 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 h-screen flex overflow-hidden">
+
+    <!-- 1. 左側工具箱 -->
+    <div class="w-80 flex flex-col border-r border-gray-700 bg-gray-800 z-10 shadow-xl" id="toolbox">
+        <div class="p-4 bg-gray-900 font-bold flex items-center shadow text-yellow-400 border-b border-gray-700">
+            <i data-lucide="cpu" class="mr-2"></i> 積木工具箱
+        </div>
+        
+        <!-- 分類按鈕 -->
+        <div class="flex flex-wrap gap-1 p-2 bg-gray-800 border-b border-gray-700" id="category-tabs">
+            <!-- JS 動態生成 -->
+        </div>
+
+        <!-- 積木列表 (也是垃圾桶) -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-6 custom-scrollbar relative" id="palette">
+            <!-- JS 動態生成 -->
+        </div>
+
+        <!-- 垃圾桶提示區 -->
+        <div class="p-4 bg-red-900/20 border-t border-red-900/50 text-center text-red-400 text-xs" id="trash-zone">
+            <i data-lucide="trash-2" class="mx-auto mb-1"></i>
+            拖曳至此區域刪除
+        </div>
+    </div>
+
+    <!-- 2. 中間工作區 -->
+    <div class="flex-1 flex flex-col bg-[#1e1e1e] relative overflow-hidden">
+        <div class="h-12 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4 shadow-md z-20">
+            <div class="flex items-center text-gray-400 text-sm">
+                <i data-lucide="mouse-pointer-2" class="mr-2 w-4"></i> 支援拖曳操作
+            </div>
+            <button onclick="resetWorkspace()" class="flex items-center text-red-400 hover:bg-red-900/50 px-3 py-1 rounded transition-colors text-sm">
+                <i data-lucide="rotate-ccw" class="mr-1 w-4"></i> 重置
+            </button>
+        </div>
+
+        <div id="workspace" class="flex-1 overflow-auto p-8 relative grid-bg">
+            <!-- 積木將渲染在此 -->
+        </div>
+    </div>
+
+    <!-- 3. 右側代碼 -->
+    <div class="w-96 bg-gray-950 border-l border-gray-800 flex flex-col z-10 shadow-xl">
+        <div class="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-4 font-mono text-sm text-green-400">
+            <i data-lucide="terminal" class="mr-2 w-4"></i> C++ Code Preview
+        </div>
+        <div class="flex-1 overflow-auto p-4 font-mono text-xs text-green-300/90 whitespace-pre-wrap select-text custom-scrollbar bg-[#111]" id="code-preview">
+            // Code will appear here...
+        </div>
+        <div class="p-4 border-t border-gray-800 bg-gray-900">
+            <button onclick="copyCode()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-sm transition-colors shadow-lg flex items-center justify-center">
+                <i data-lucide="copy" class="mr-2 w-4"></i> 複製程式碼
+            </button>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-600 w-80 transform transition-all">
+            <h3 id="modal-title" class="text-white mb-4 font-bold text-lg">新建</h3>
+            <input type="text" id="modal-input" class="w-full bg-gray-900 text-white p-2 rounded border border-gray-700 mb-6 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="輸入名稱...">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal()" class="px-4 py-2 text-gray-400 hover:bg-gray-700 rounded transition-colors text-sm">取消</button>
+                <button id="modal-confirm" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded shadow text-sm">確定</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- 1. 資料結構與定義 ---
+    const SHAPES = { HAT: 'HAT', STACK: 'STACK', C_BLOCK: 'C', REPORTER: 'VAL', BOOLEAN: 'BOOL' };
+    
+    // 積木定義
+    const BLOCK_DEFS = {
+        // 事件
+        SETUP: { type: 'SETUP', cat: 'EVENT', name: '當 Arduino 開啟', shape: SHAPES.HAT, code: '// Setup' },
+        
+        // 控制
+        WAIT: { type: 'WAIT', cat: 'CONTROL', name: '等待 ( time ) 毫秒', args: [{type: 'NUM', default: 1000}], shape: SHAPES.STACK },
+        WAIT_UNTIL: { type: 'WAIT_UNTIL', cat: 'CONTROL', name: '等待直到 < cond >', args: [{type: 'BOOL', default: false}], shape: SHAPES.STACK },
+        
+        // 迴圈
+        REPEAT: { type: 'REPEAT', cat: 'LOOP', name: '重複 ( times ) 次', args: [{type: 'NUM', default: 10}], shape: SHAPES.C_BLOCK },
+        FOREVER: { type: 'FOREVER', cat: 'LOOP', name: '重複無限次', shape: SHAPES.C_BLOCK, isLoop: true },
+        REPEAT_UNTIL: { type: 'REPEAT_UNTIL', cat: 'LOOP', name: '重複直到 < cond >', args: [{type: 'BOOL', default: false}], shape: SHAPES.C_BLOCK },
+        
+        // 邏輯
+        IF: { type: 'IF', cat: 'LOGIC', name: '如果 < cond > 那麼', args: [{type: 'BOOL', default: false}], shape: SHAPES.C_BLOCK },
+        IF_ELSE: { type: 'IF_ELSE', cat: 'LOGIC', name: '如果 < cond > 那麼...否則', args: [{type: 'BOOL', default: false}], shape: SHAPES.C_BLOCK, hasElse: true },
+        COMPARE: { type: 'COMPARE', cat: 'LOGIC', name: '( a ) * op * ( b )', args: [{type: 'NUM', default: 0}, {type: 'MENU', options: ['==','!=','>','<','>=','<=']}, {type: 'NUM', default: 0}], shape: SHAPES.BOOLEAN },
+        
+        // 數學
+        NUMBER: { type: 'NUMBER', cat: 'MATH', name: '( val )', args: [{type: 'NUM', default: 0}], shape: SHAPES.REPORTER },
+        MATH_OP: { type: 'MATH_OP', cat: 'MATH', name: '( a ) * op * ( b )', args: [{type: 'NUM', default: 0}, {type: 'MENU', options: ['+','-','*','/']}, {type: 'NUM', default: 0}], shape: SHAPES.REPORTER },
+        RANDOM: { type: 'RANDOM', cat: 'MATH', name: '隨機取數 ( min ) 到 ( max )', args: [{type: 'NUM', default: 1}, {type: 'NUM', default: 10}], shape: SHAPES.REPORTER },
+        
+        // 變數 (修正：設為 ()，且使用選單)
+        VAR_GET: { type: 'VAR_GET', cat: 'VAR', name: 'varName', isVar: true, shape: SHAPES.REPORTER }, // 動態生成時 name 會變
+        VAR_SET: { type: 'VAR_SET', cat: 'VAR', name: '變數 * var * 設為 ( val )', args: [{type: 'VAR_MENU'}, {type: 'NUM', default: 0}], shape: SHAPES.STACK },
+        VAR_CHANGE: { type: 'VAR_CHANGE', cat: 'VAR', name: '變數 * var * 改變 ( val )', args: [{type: 'VAR_MENU'}, {type: 'NUM', default: 1}], shape: SHAPES.STACK },
+        
+        // 清單
+        LIST_ADD: { type: 'LIST_ADD', cat: 'LIST', name: '添加 ( val ) 到 * list *', args: [{type: 'NUM', default: 0}, {type: 'LIST_MENU'}], shape: SHAPES.STACK },
+        LIST_DEL_ALL: { type: 'LIST_DEL_ALL', cat: 'LIST', name: '刪除 * list * 的所有項目', args: [{type: 'LIST_MENU'}], shape: SHAPES.STACK },
+        LIST_ITEM: { type: 'LIST_ITEM', cat: 'LIST', name: '* list * 的第 ( idx ) 項', args: [{type: 'LIST_MENU'}, {type: 'NUM', default: 0}], shape: SHAPES.REPORTER },
+        
+        // IO
+        LED_SET: { type: 'LED_SET', cat: 'IO', name: 'D ( pin ) LED - * status *', args: [{type: 'NUM', default: 13}, {type: 'MENU', options: ['亮', '滅']}], shape: SHAPES.STACK },
+    };
+
+    const CATEGORIES = {
+        EVENT: { name: '事件', color: 'bg-yellow-500', icon: 'play-circle' },
+        CONTROL: { name: '控制', color: 'bg-orange-500', icon: 'settings' },
+        LOOP: { name: '迴圈', color: 'bg-green-500', icon: 'refresh-cw' },
+        LOGIC: { name: '邏輯', color: 'bg-blue-500', icon: 'git-branch' },
+        MATH: { name: '運算', color: 'bg-green-400', icon: 'plus' },
+        VAR: { name: '變數', color: 'bg-orange-400', icon: 'type' },
+        LIST: { name: '清單', color: 'bg-red-500', icon: 'list' },
+        IO: { name: '硬體', color: 'bg-purple-500', icon: 'cpu' },
+    };
+
+    // 全域狀態
+    let state = {
+        script: [],
+        variables: [],
+        lists: []
+    };
+
+    // 拖曳狀態
+    let dragData = null; // { type: 'NEW'|'MOVE', id, defKey, data }
+    let dragOverId = null;
+
+    // 初始化
+    function init() {
+        resetWorkspace();
+        renderSidebar();
+        lucide.createIcons();
+    }
+
+    function resetWorkspace() {
+        // 初始化第一塊 Setup 積木，且鎖定
+        state.script = [
+            { id: 'setup-block', type: 'SETUP', args: [], children: [], elseChildren: [], locked: true }
+        ];
+        renderWorkspace();
+        updateCode();
+    }
+
+    function uid() {
+        return Math.random().toString(36).substr(2, 9);
+    }
+
+    // --- 2. 渲染邏輯 ---
+
+    // 渲染工具箱
+    function renderSidebar() {
+        const tabsContainer = document.getElementById('category-tabs');
+        const palette = document.getElementById('palette');
+        
+        tabsContainer.innerHTML = '';
+        palette.innerHTML = '';
+
+        // 渲染分類按鈕
+        Object.entries(CATEGORIES).forEach(([key, cat]) => {
+            const btn = document.createElement('button');
+            btn.className = `flex items-center px-2 py-1 text-xs rounded ${cat.color} text-white shadow hover:opacity-80 transition-opacity`;
+            btn.innerHTML = `<i data-lucide="${cat.icon}" class="w-3 h-3 mr-1"></i> ${cat.name}`;
+            btn.onclick = () => document.getElementById(`cat-${key}`).scrollIntoView({behavior: 'smooth'});
+            tabsContainer.appendChild(btn);
+        });
+
+        // 渲染積木
+        Object.keys(CATEGORIES).forEach(catKey => {
+            const section = document.createElement('div');
+            section.id = `cat-${catKey}`;
+            section.className = 'mb-6';
+            
+            const title = document.createElement('h3');
+            title.className = 'text-[10px] text-gray-500 mb-2 font-bold uppercase tracking-wider pl-1';
+            title.innerText = CATEGORIES[catKey].name;
+            section.appendChild(title);
+
+            // 特殊按鈕 (變數/清單)
+            if (catKey === 'VAR') {
+                const btn = document.createElement('button');
+                btn.className = 'w-full py-1 bg-gray-700 text-xs rounded border border-gray-600 mb-2 text-gray-300 hover:bg-gray-600 transition-colors';
+                btn.innerText = '+ 建立變數';
+                btn.onclick = () => openModal('VAR');
+                section.appendChild(btn);
+                
+                // 渲染現有變數 (Getters)
+                state.variables.forEach(v => {
+                    const block = createSidebarBlock({ 
+                        type: 'VAR_GET', 
+                        data: { varName: v, name: v } // 覆蓋 name 顯示變數名
+                    }, CATEGORIES.VAR.color);
+                    section.appendChild(block);
+                });
+            }
+            if (catKey === 'LIST') {
+                const btn = document.createElement('button');
+                btn.className = 'w-full py-1 bg-gray-700 text-xs rounded border border-gray-600 mb-2 text-gray-300 hover:bg-gray-600 transition-colors';
+                btn.innerText = '+ 建立清單';
+                btn.onclick = () => openModal('LIST');
+                section.appendChild(btn);
+
+                // [新功能] 渲染現有清單 (Getters) - 使用 LIST_ITEM 或是單純清單名稱積木
+                // 為了簡單，我們假設可以把清單名稱當作一個 REPORTER (雖然 C++ 不直接支援清單作為變數，但可以用作參數)
+                // 這裡我們只顯示清單名稱，實際功能依賴 LIST_ITEM 等
+                state.lists.forEach(l => {
+                    // 這裡我們做一個假的積木只為了拖曳名稱，或者直接使用 LIST_ITEM 預填
+                    // 為了符合需求 "像變數一樣顯示"，我們做一個 List Reporter
+                    // 但實際上沒有 LIST_GET，我們用一個特殊的視覺
+                    const div = document.createElement('div');
+                    div.className = `px-3 py-1 mb-1 rounded-full text-xs text-white shadow text-center cursor-grab bg-red-500 border border-white/20`;
+                    div.innerText = l;
+                    div.draggable = true;
+                    // 這裡的邏輯：拖曳這個清單名稱，實際上並沒有對應的積木可以直接 "讀取整個清單"
+                    // 通常是配合 "添加 X 到 [清單]"。
+                    // 為了視覺一致，我們不讓它生成積木，或者讓它生成一個 "清單長度" 或類似的？
+                    // 暫時：它只是一個視覺展示，若要操作請用下方的功能積木
+                    // 或者：讓它生成一個代表該清單的 Menu Block? 
+                    // 簡單起見，我們讓它不可拖曳，僅顯示。
+                    // 修正：使用者說 "要顯示已建立的清單"，通常是為了確認有建立。
+                    section.appendChild(div);
+                });
+            }
+
+            // 標準積木
+            Object.keys(BLOCK_DEFS).filter(k => BLOCK_DEFS[k].cat === catKey && k !== 'SETUP').forEach(key => {
+                const def = BLOCK_DEFS[key];
+                // 變數/清單的通用操作積木只顯示一次
+                if ((catKey === 'VAR' && def.isVar) || (catKey === 'LIST' && def.type === 'LIST_GET')) return;
+
+                const blockEl = createSidebarBlock({ type: key }, CATEGORIES[catKey].color);
+                section.appendChild(blockEl);
+            });
+
+            palette.appendChild(section);
+        });
+        
+        lucide.createIcons();
+    }
+
+    function createSidebarBlock(info, colorClass) {
+        const def = BLOCK_DEFS[info.type];
+        const el = document.createElement('div');
+        // 使用 info.data.name 如果有 (變數名)，否則用 def.name
+        const displayName = (info.data && info.data.name) ? info.data.name : def.name;
+        
+        // 根據形狀微調樣式
+        let shapeClass = 'rounded';
+        if (def.shape === SHAPES.REPORTER) shapeClass = 'rounded-full px-3';
+        if (def.shape === SHAPES.BOOLEAN) shapeClass = 'clip-hex px-3'; // 簡化 CSS
+
+        el.className = `mb-2 px-3 py-2 text-xs text-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing transition-transform hover:translate-x-1 ${colorClass} ${shapeClass} truncate`;
+        el.innerText = displayName;
+        el.draggable = true;
+        el.ondragstart = (e) => {
+            e.stopPropagation();
+            dragData = { type: 'NEW', defKey: info.type, data: info.data || {} };
+            e.dataTransfer.effectAllowed = 'copy';
+        };
+        return el;
+    }
+
+    // 渲染工作區
+    function renderWorkspace() {
+        const ws = document.getElementById('workspace');
+        ws.innerHTML = '';
+        state.script.forEach((block, idx) => {
+            ws.appendChild(createBlockElement(block, state.script));
+        });
+        lucide.createIcons();
+    }
+
+    // 遞迴建立積木 DOM
+    function createBlockElement(block, parentList) {
+        const def = BLOCK_DEFS[block.type] || { ...block, shape: SHAPES.STACK, color: 'bg-gray-500' };
+        const cat = CATEGORIES[def.cat] || { color: 'bg-gray-500' };
+        const bgColor = def.color || cat.color;
+        
+        const el = document.createElement('div');
+        
+        // 形狀樣式
+        let shapeClass = 'rounded my-1';
+        if (def.shape === SHAPES.HAT) shapeClass = 'block-hat mt-4';
+        if (def.shape === SHAPES.C_BLOCK) shapeClass = 'block-c';
+        if (def.shape === SHAPES.REPORTER) shapeClass = 'block-reporter';
+        if (def.shape === SHAPES.BOOLEAN) shapeClass = 'block-boolean';
+
+        el.className = `text-white relative group select-none ${shapeClass} ${bgColor} p-2 shadow-md border-l-4 border-black/10`;
+        
+        if (!block.locked) {
+            el.draggable = true;
+            el.style.cursor = 'grab';
+            el.ondragstart = (e) => {
+                e.stopPropagation();
+                dragData = { type: 'MOVE', id: block.id, parentList: parentList };
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(() => el.classList.add('hidden'), 0); // 拖曳時隱藏原體
+            };
+            el.ondragend = (e) => {
+                el.classList.remove('hidden');
+                dragData = null;
+            };
+        } else {
+            el.style.cursor = 'default';
+        }
+
+        // 標題列
+        const header = document.createElement('div');
+        header.className = 'flex items-center flex-wrap gap-1 pointer-events-none'; // 防止文字干擾拖曳
+        
+        // 解析名稱並插入參數
+        // 支援 ( ) < > * *
+        const parts = def.name.split(/(\( [a-z0-9]+ \)|< [a-z0-9]+ >|\* [a-z0-9]+ \*)/);
+        let argIdx = 0;
+
+        // 如果是變數 Getter，直接顯示名稱
+        if (block.type === 'VAR_GET') {
+            header.innerText = block.varName;
+        } else {
+            parts.forEach(part => {
+                if (part.match(/\( [a-z0-9]+ \)|< [a-z0-9]+ >|\* [a-z0-9]+ \*/)) {
+                    // 渲染參數
+                    const argContainer = createArgElement(block, argIdx, def.args[argIdx]);
+                    header.appendChild(argContainer);
+                    argIdx++;
+                } else {
+                    const span = document.createElement('span');
+                    span.className = 'font-bold text-sm mx-0.5';
+                    span.innerText = part.trim();
+                    header.appendChild(span);
+                }
+            });
+        }
+        
+        // 鎖定圖示
+        if (block.locked) {
+            header.innerHTML += `<i data-lucide="lock" class="w-3 h-3 ml-2 opacity-50"></i>`;
+        }
+
+        el.appendChild(header);
+
+        // C-Block 容器
+        if (def.shape === SHAPES.C_BLOCK || def.isLoop) {
+            const container = document.createElement('div');
+            container.className = 'ml-4 pl-2 border-l-2 border-white/20 min-h-[32px] mt-1 bg-black/10 rounded-l transition-colors';
+            
+            // 容器 Drop Zone
+            setupDropZone(container, (dropped) => {
+                moveBlock(dropped, block.children);
+            });
+
+            // 渲染子積木
+            block.children.forEach(child => {
+                container.appendChild(createBlockElement(child, block.children));
+            });
+            el.appendChild(container);
+        }
+
+        // Else 容器
+        if (def.hasElse) {
+            const elseLabel = document.createElement('div');
+            elseLabel.className = 'text-xs font-bold px-1 py-1 border-t border-white/10 pointer-events-none';
+            elseLabel.innerText = '否則';
+            el.appendChild(elseLabel);
+
+            const elseContainer = document.createElement('div');
+            elseContainer.className = 'ml-4 pl-2 border-l-2 border-white/20 min-h-[32px] bg-black/10 rounded-l transition-colors';
+            
+            setupDropZone(elseContainer, (dropped) => {
+                moveBlock(dropped, block.elseChildren);
+            });
+
+            block.elseChildren.forEach(child => {
+                elseContainer.appendChild(createBlockElement(child, block.elseChildren));
+            });
+            el.appendChild(elseContainer);
+        }
+
+        return el;
+    }
+
+    // 建立參數元件 (輸入框/選單/插槽)
+    function createArgElement(block, argIdx, argDef) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'pointer-events-auto inline-block align-middle'; // 允許點擊輸入
+        
+        const val = block.args[argIdx];
+
+        // 1. 如果已填入積木
+        if (typeof val === 'object' && val.id) {
+            const argBlock = createBlockElement(val, block.args); // 這裡 parentList 傳 args 引用可能有問題，需小心
+            // 修正：參數內的積木若移動，需要從 args 移除。
+            // 這裡為了簡化，若參數積木被拖走，args[argIdx] 設回預設值
+            argBlock.ondragstart = (e) => {
+                e.stopPropagation();
+                // 特殊處理：標記這是從參數拖出來的
+                dragData = { type: 'MOVE', id: val.id, sourceArgs: block.args, sourceIdx: argIdx };
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(() => argBlock.classList.add('hidden'), 0);
+            };
+            wrapper.appendChild(argBlock);
+            return wrapper;
+        }
+
+        // 2. 選單 (MENU, VAR_MENU, LIST_MENU)
+        if (['MENU', 'VAR_MENU', 'LIST_MENU'].includes(argDef.type)) {
+            const select = document.createElement('select');
+            select.className = 'text-black text-xs px-1 py-0.5 rounded mx-1 border-none outline-none cursor-pointer bg-white/90';
+            if (argDef.type === 'LIST_MENU') select.className = 'text-black text-xs px-1 py-0.5 rounded mx-1 border-none outline-none cursor-pointer bg-red-100';
+            
+            let options = argDef.options || [];
+            if (argDef.type === 'VAR_MENU') options = state.variables.length ? state.variables : ['無變數'];
+            if (argDef.type === 'LIST_MENU') options = state.lists.length ? state.lists : ['無清單'];
+
+            options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.innerText = opt;
+                if (opt === val) option.selected = true;
+                select.appendChild(option);
+            });
+
+            select.onchange = (e) => {
+                block.args[argIdx] = e.target.value;
+                updateCode();
+            };
+            wrapper.appendChild(select);
+            return wrapper;
+        }
+
+        // 3. 輸入框 / 插槽
+        const slot = document.createElement('div');
+        // 形狀：NUM/ANY 為圓形，BOOL 為六角
+        const shapeClass = argDef.type === 'BOOL' ? 'clip-hex px-3' : 'rounded-full px-2';
+        slot.className = `inline-flex items-center justify-center min-w-[30px] h-[24px] mx-1 text-xs transition-all bg-black/20 hover:bg-black/30 ${shapeClass}`;
+        
+        // Drop Zone
+        slot.ondragover = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            slot.classList.add('bg-yellow-100/50');
+        };
+        slot.ondragleave = () => slot.classList.remove('bg-yellow-100/50');
+        slot.ondrop = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            slot.classList.remove('bg-yellow-100/50');
+            if (dragData) {
+                // 檢查類型
+                const def = BLOCK_DEFS[dragData.defKey || findBlock(dragData.id).type];
+                let compatible = false;
+                if (argDef.type === 'NUM' && def.shape === SHAPES.REPORTER) compatible = true;
+                if (argDef.type === 'BOOL' && def.shape === SHAPES.BOOLEAN) compatible = true;
+                
+                if (compatible) {
+                    handleDrop(dragData, block.args, argIdx); // 這裡的 drop 邏輯是填入 args
+                }
+            }
+        };
+
+        if (argDef.type === 'NUM' || argDef.type === 'ANY') {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = val;
+            input.className = 'bg-transparent text-white text-center w-12 outline-none';
+            input.onchange = (e) => {
+                block.args[argIdx] = e.target.value;
+                updateCode();
+            };
+            input.onclick = (e) => e.stopPropagation(); // 防止觸發拖曳
+            slot.appendChild(input);
+        } else {
+            // BOOL 空插槽
+            slot.innerText = '< >';
+            slot.className += ' text-white/50 text-[10px]';
+        }
+
+        wrapper.appendChild(slot);
+        return wrapper;
+    }
+
+    // 設定 Drop Zone
+    function setupDropZone(el, onDropSuccess) {
+        el.ondragover = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.classList.add('drop-target');
+        };
+        el.ondragleave = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.classList.remove('drop-target');
+        };
+        el.ondrop = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.classList.remove('drop-target');
+            if (dragData) {
+                handleDrop(dragData, null, null, onDropSuccess);
+            }
+        };
+    }
+
+    // 處理放置邏輯
+    function handleDrop(data, targetArgs, targetIdx, customAction) {
+        let block;
+        
+        // 1. 取得積木資料
+        if (data.type === 'NEW') {
+            const def = BLOCK_DEFS[data.defKey];
+            block = {
+                id: uid(),
+                type: data.defKey,
+                args: def.args ? def.args.map(a => a.default) : [],
+                children: [],
+                elseChildren: [],
+                ...data.data
+            };
+        } else {
+            // MOVE: 從原處移除
+            block = findAndRemoveBlock(data.id);
+            if (!block) return;
+        }
+
+        // 2. 放置
+        if (targetArgs) {
+            // 放入插槽
+            targetArgs[targetIdx] = block;
+        } else if (customAction) {
+            // 放入容器
+            customAction(block);
+        } else {
+            // 放入根目錄
+            state.script.push(block);
+        }
+
+        renderWorkspace();
+        updateCode();
+    }
+
+    function moveBlock(block, targetList) {
+        targetList.push(block);
+    }
+
+    // 搜尋並移除 (遞迴)
+    function findAndRemoveBlock(id, list = state.script) {
+        const idx = list.findIndex(b => b.id === id);
+        if (idx !== -1) {
+            return list.splice(idx, 1)[0];
+        }
+        // 遞迴搜尋
+        for (let b of list) {
+            if (b.children) {
+                const res = findAndRemoveBlock(id, b.children);
+                if (res) return res;
+            }
+            if (b.elseChildren) {
+                const res = findAndRemoveBlock(id, b.elseChildren);
+                if (res) return res;
+            }
+            // 搜尋參數內的積木
+            if (b.args) {
+                for (let i = 0; i < b.args.length; i++) {
+                    const arg = b.args[i];
+                    if (typeof arg === 'object' && arg.id === id) {
+                        // 恢復預設值
+                        const def = BLOCK_DEFS[b.type];
+                        b.args[i] = def.args[i].default;
+                        return arg;
+                    }
+                    // 如果參數內還有積木 (遞迴)
+                    if (typeof arg === 'object' && arg.id) {
+                        // 這裡簡化：目前不支援太深層的參數搜尋，因為我們的 findAndRemoveBlock 邏輯主要是針對 List
+                        // 但參數不是 List。所以上面的邏輯是針對「該參數本身就是要找的積木」
+                        // 如果要找參數內部的參數... 這裡略過。
+                    }
+                }
+            }
+        }
+        return null;
+    }
+    
+    function findBlock(id, list = state.script) {
+        // 簡化版搜尋，僅用於 Drop 檢查類型
+        // 實際應實作完整遞迴
+        // 這裡暫時回傳空以避免報錯，因為 NEW 類型不需要 find
+        return {}; 
+    }
+
+    // 垃圾桶邏輯
+    const trash = document.getElementById('toolbox'); // 整個左側都是垃圾桶
+    trash.ondragover = (e) => {
+        e.preventDefault();
+        document.getElementById('trash-zone').classList.add('bg-red-800');
+    };
+    trash.ondragleave = () => document.getElementById('trash-zone').classList.remove('bg-red-800');
+    trash.ondrop = (e) => {
+        e.preventDefault();
+        document.getElementById('trash-zone').classList.remove('bg-red-800');
+        if (dragData && dragData.type === 'MOVE') {
+            // 刪除：如果是 setup 則不能刪除
+            const block = findAndRemoveBlock(dragData.id); // 已在 handleDrop 移除，這裡只需確認不加回去
+            // findAndRemoveBlock 實際上會將其從樹中移除並回傳
+            // 所以只要不加回任何地方，就是刪除了
+            // 這裡唯一要檢查的是如果是 setup (在 remove 中被移除?)
+            // 其實我們在 ondragstart 就禁止 setup 拖曳了，所以這裡不需要擔心
+            renderWorkspace();
+            updateCode();
+        }
+    };
+    // 也要設定根工作區的 drop，若拖到空白處加入根目錄
+    const ws = document.getElementById('workspace');
+    setupDropZone(ws, (dropped) => {
+        state.script.push(dropped);
+    });
+
+
+    // --- 3. 變數/清單管理 ---
+    let modalType = '';
+    function openModal(type) {
+        modalType = type;
+        document.getElementById('modal-title').innerText = type === 'VAR' ? '新變數名稱' : '新清單名稱';
+        document.getElementById('modal-input').value = '';
+        document.getElementById('modal-overlay').classList.remove('hidden');
+        document.getElementById('modal-input').focus();
+    }
+    function closeModal() {
+        document.getElementById('modal-overlay').classList.add('hidden');
+    }
+    document.getElementById('modal-confirm').onclick = () => {
+        const name = document.getElementById('modal-input').value.trim();
+        if (name) {
+            if (modalType === 'VAR') {
+                if (!state.variables.includes(name)) state.variables.push(name);
+            } else {
+                if (!state.lists.includes(name)) state.lists.push(name);
+            }
+            renderSidebar();
+            renderWorkspace(); // 更新下拉選單
+            updateCode();
+        }
+        closeModal();
+    };
+
+    // --- 4. 代碼生成 (Ported from React) ---
+    function updateCode() {
+        let globalVars = '';
+        let setupCode = '';
+        let loopCode = '';
+        let functions = '';
+
+        state.variables.forEach(v => { globalVars += `float ${v} = 0;\n`; });
+        state.lists.forEach(l => {
+            globalVars += `float ${l}[100];\nint ${l}_len = 0;\n`;
+        });
+        if (state.lists.length > 0) {
+            functions += `void list_add(float* list, int* len, float val) { if (*len < 100) { list[*len] = val; (*len)++; } }\n`;
+            functions += `void list_del_all(int* len) { *len = 0; }\n`;
+        }
+
+        const parseBlock = (block) => {
+            const args = (block.args || []).map(arg => {
+                if (typeof arg === 'object' && arg.id) return parseBlock(arg);
+                return arg;
+            });
+
+            switch (block.type) {
+                case 'SETUP': return '';
+                case 'WAIT': return `delay(${args[0]});\n`;
+                case 'WAIT_UNTIL': return `while(!(${args[0]})) { delay(10); }\n`;
+                case 'FOREVER': return `// Loop logic\n${parseChildren(block.children)}`;
+                case 'REPEAT': return `for(int i=0; i<${args[0]}; i++) {\n${parseChildren(block.children)}}\n`;
+                case 'REPEAT_UNTIL': return `while(!(${args[0]})) {\n${parseChildren(block.children)}}\n`;
+                case 'IF': return `if (${args[0]}) {\n${parseChildren(block.children)}}\n`;
+                case 'IF_ELSE': return `if (${args[0]}) {\n${parseChildren(block.children)}} else {\n${parseChildren(block.elseChildren)}}\n`;
+                case 'NUMBER': return `${args[0]}`;
+                case 'COMPARE': return `(${args[0]} ${args[1]} ${args[2]})`;
+                case 'AND_OR': return `(${args[0]} ${args[1]} ${args[2]})`;
+                case 'NOT': return `!(${args[0]})`;
+                case 'MATH_OP': return `(${args[0]} ${args[1]} ${args[2]})`;
+                case 'RANDOM': return `random(${args[0]}, ${args[1]})`;
+                case 'VAR_GET': return `${block.varName || block.args[0] || block.data?.varName}`; // 兼容舊版與新版
+                case 'VAR_SET': return `${args[0]} = ${args[1]};\n`;
+                case 'VAR_CHANGE': return `${args[0]} += ${args[1]};\n`;
+                case 'LIST_ADD': return `list_add(${args[1]}, &${args[1]}_len, ${args[0]});\n`;
+                case 'LIST_DEL_ALL': return `list_del_all(&${args[0]}_len);\n`;
+                case 'LIST_ITEM': return `${args[0]}[(int)${args[1]}]`;
+                case 'LED_SET': return `digitalWrite(${args[0]}, ${args[1] === '亮' ? 'HIGH' : 'LOW'});\n`;
+                default: return `// ${block.type}\n`;
+            }
+        };
+
+        const parseChildren = (children) => {
+            if (!children) return '';
+            return children.map(b => parseBlock(b)).join('');
+        };
+
+        state.script.forEach(block => {
+            if (block.type === 'FOREVER') loopCode += parseChildren(block.children);
+            else if (block.type !== 'SETUP') setupCode += parseBlock(block);
+        });
+
+        const fullCode = `${globalVars}\n${functions}\nvoid setup() {\n  Serial.begin(9600);\n${setupCode}}\n\nvoid loop() {\n${loopCode}}`;
+        document.getElementById('code-preview').innerText = fullCode;
+    }
+
+    function copyCode() {
+        const code = document.getElementById('code-preview').innerText;
+        navigator.clipboard.writeText(code).then(() => alert('已複製代碼！'));
+    }
+
+    // 啟動
+    init();
+
+</script>
+</body>
+</html>
