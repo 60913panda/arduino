@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arduino 積木編輯器 V5.11 (Smooth Drag)</title>
+    <title>Arduino 積木編輯器 V5.12 (Cap Logic Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -75,8 +75,6 @@
         .bg-red-500 { background-color: #ff6680; }
 
         .selected-block { box-shadow: 0 0 0 3px #fbbf24; z-index: 50; }
-        
-        /* 拖曳樣式：pointer-events: none 讓滑鼠可以穿透積木偵測到下方的放置區 */
         .dragging { opacity: 0.6; transform: scale(1.02); z-index: 100; pointer-events: none; }
         
         .drop-target { background-color: rgba(255, 255, 255, 0.1); outline: 2px dashed rgba(255, 255, 255, 0.5); border-radius: 4px; }
@@ -397,7 +395,6 @@
                 e.stopPropagation();
                 dragData = { type: 'MOVE', id: block.id, parentList: parentList };
                 e.dataTransfer.effectAllowed = 'move';
-                // [Fix] 延遲添加樣式，避免瀏覽器誤判拖曳元素消失
                 setTimeout(() => el.classList.add('dragging'), 0);
             };
             el.ondragend = () => { el.classList.remove('dragging'); dragData = null; };
@@ -415,6 +412,9 @@
                     if (dragDef.shape === SHAPES.REPORTER || dragDef.shape === SHAPES.BOOLEAN) return;
                     if (dragDef.shape === SHAPES.HAT) return; 
                     if (dragData.id === block.id) return; 
+
+                    // [Fix] CAP 積木 (平底) 下方不能接 Stack/C 積木
+                    if (def.shape === SHAPES.CAP) return;
 
                     e.stopPropagation(); 
                     el.classList.add('drop-target-after');
@@ -495,7 +495,6 @@
                 e.stopPropagation();
                 dragData = { type: 'MOVE', id: val.id, sourceArgs: block.args, sourceIdx: argIdx };
                 e.dataTransfer.effectAllowed = 'move';
-                // [Fix] 參數內的積木也需要延遲添加樣式
                 setTimeout(() => argBlock.classList.add('dragging'), 0);
             };
             argBlock.ondragend = () => { argBlock.classList.remove('dragging'); dragData = null; };
@@ -613,7 +612,6 @@
             if (!block) return;
         }
 
-        // [Fix] Safety check
         if (!targetContainer && mode !== 'APPEND' && !customAction) targetContainer = state.script;
 
         if (mode === 'REPLACE') {
