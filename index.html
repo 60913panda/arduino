@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arduino 積木編輯器 V5.9 (Reorder Fix)</title>
+    <title>Arduino 積木編輯器 V5.11 (Smooth Drag)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -28,7 +28,6 @@
             border: 1px solid rgba(0,0,0,0.1);
         }
 
-        /* 上方凹槽 */
         .has-notch-top { margin-top: 2px; }
         .has-notch-top::before {
             content: ''; position: absolute; top: -1px; left: var(--notch-left);
@@ -40,7 +39,6 @@
             border-radius: 0 0 4px 4px; z-index: 2;
         }
 
-        /* 下方凸起 */
         .has-bump-bottom { margin-bottom: 4px; }
         .has-bump-bottom::after {
             content: ''; position: absolute; bottom: -4px; left: var(--notch-left);
@@ -77,16 +75,13 @@
         .bg-red-500 { background-color: #ff6680; }
 
         .selected-block { box-shadow: 0 0 0 3px #fbbf24; z-index: 50; }
-        .dragging { opacity: 0.7; transform: scale(1.02); z-index: 100; pointer-events: none; }
+        
+        /* 拖曳樣式：pointer-events: none 讓滑鼠可以穿透積木偵測到下方的放置區 */
+        .dragging { opacity: 0.6; transform: scale(1.02); z-index: 100; pointer-events: none; }
         
         .drop-target { background-color: rgba(255, 255, 255, 0.1); outline: 2px dashed rgba(255, 255, 255, 0.5); border-radius: 4px; }
         .drop-target-invalid { cursor: not-allowed; }
-        
-        /* [新增] 插入位置指示線 */
-        .drop-target-after {
-            border-bottom: 4px solid #fbbf24 !important;
-            margin-bottom: 4px;
-        }
+        .drop-target-after { border-bottom: 4px solid #fbbf24 !important; margin-bottom: 4px; }
         
         .grid-bg {
             background-color: var(--workspace-bg);
@@ -402,12 +397,13 @@
                 e.stopPropagation();
                 dragData = { type: 'MOVE', id: block.id, parentList: parentList };
                 e.dataTransfer.effectAllowed = 'move';
-                el.classList.add('dragging');
+                // [Fix] 延遲添加樣式，避免瀏覽器誤判拖曳元素消失
+                setTimeout(() => el.classList.add('dragging'), 0);
             };
             el.ondragend = () => { el.classList.remove('dragging'); dragData = null; };
         }
 
-        // [新增] 允許拖曳到積木上進行插入
+        // 允許拖曳到積木上進行插入
         if (def.shape === SHAPES.STACK || def.shape === SHAPES.C_BLOCK || def.shape === SHAPES.CAP) {
             el.ondragover = (e) => {
                 e.preventDefault();
@@ -416,12 +412,11 @@
                     if (!type || !BLOCK_DEFS[type]) return;
                     const dragDef = BLOCK_DEFS[type];
                     
-                    // 防呆：Reporter/Boolean 不能插入
                     if (dragDef.shape === SHAPES.REPORTER || dragDef.shape === SHAPES.BOOLEAN) return;
-                    if (dragDef.shape === SHAPES.HAT) return; // HAT 不能插入
-                    if (dragData.id === block.id) return; // 不能插入自己
+                    if (dragDef.shape === SHAPES.HAT) return; 
+                    if (dragData.id === block.id) return; 
 
-                    e.stopPropagation(); // 阻止冒泡
+                    e.stopPropagation(); 
                     el.classList.add('drop-target-after');
                 }
             };
@@ -500,7 +495,10 @@
                 e.stopPropagation();
                 dragData = { type: 'MOVE', id: val.id, sourceArgs: block.args, sourceIdx: argIdx };
                 e.dataTransfer.effectAllowed = 'move';
+                // [Fix] 參數內的積木也需要延遲添加樣式
+                setTimeout(() => argBlock.classList.add('dragging'), 0);
             };
+            argBlock.ondragend = () => { argBlock.classList.remove('dragging'); dragData = null; };
             wrapper.appendChild(argBlock);
             return wrapper;
         }
@@ -601,7 +599,6 @@
         };
     }
 
-    // [修正] handleDrop 支援多種模式
     function handleDrop(data, targetContainer, targetIndex, mode = 'APPEND', customAction = null) {
         let block;
         if (data.type === 'NEW') {
@@ -616,13 +613,16 @@
             if (!block) return;
         }
 
+        // [Fix] Safety check
+        if (!targetContainer && mode !== 'APPEND' && !customAction) targetContainer = state.script;
+
         if (mode === 'REPLACE') {
             targetContainer[targetIndex] = block;
         } else if (mode === 'INSERT') {
             targetContainer.splice(targetIndex, 0, block);
         } else if (mode === 'APPEND') {
             if (customAction) customAction(block);
-            else targetContainer.push(block);
+            else if (targetContainer) targetContainer.push(block);
         }
 
         renderWorkspace();
