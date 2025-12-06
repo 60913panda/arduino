@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arduino 積木編輯器 V6.5 (Event & Init)</title>
+    <title>Arduino 積木編輯器 V9.1 (For Loop)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -50,7 +50,7 @@
             border-radius: 0 0 4px 4px; z-index: 1;
         }
 
-        .block-hat { border-radius: 20px 20px 4px 4px; margin-top: 10px; }
+        .block-hat { border-radius: 20px 20px 4px 4px; margin-top: 10px; margin-bottom: 4px; }
         .block-cap { border-bottom: 2px solid rgba(0,0,0,0.2); margin-bottom: 4px; } 
         
         .c-interior {
@@ -71,11 +71,13 @@
 
         .bg-orange-500 { background-color: #ff8c1a; }
         .bg-yellow-500 { background-color: #ffbf00; color: #333; }
+        .bg-yellow-600 { background-color: #e6ac00; color: #333; }
         .bg-blue-500 { background-color: #4c97ff; }
         .bg-purple-500 { background-color: #9966ff; }
         .bg-green-500 { background-color: #59c059; }
         .bg-red-500 { background-color: #ff6680; }
         .bg-gray-500 { background-color: #6b7280; }
+        .bg-gray-700 { background-color: #374151; } /* Comment */
         .bg-adv-input { background-color: #8b5cf6; } 
         .bg-adv-output { background-color: #0ea5e9; } 
         .bg-adv-code { background-color: #374151; border: 1px solid #4b5563; }
@@ -94,7 +96,7 @@
                 linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
             background-size: 20px 20px;
         }
-
+        
         details > summary { list-style: none; cursor: pointer; transition: background 0.2s; }
         details > summary::-webkit-details-marker { display: none; }
         details[open] > summary .arrow { transform: rotate(90deg); }
@@ -107,64 +109,90 @@
         .ctx-item { padding: 8px 16px; cursor: pointer; color: #e5e7eb; font-size: 13px; }
         .ctx-item:hover { background: #4b5563; }
         .ctx-divider { height: 1px; background: #4b5563; margin: 4px 0; }
+        
+        .tab-btn { flex: 1; padding: 12px; text-align: center; font-size: 14px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; color: #9ca3af; }
+        .tab-btn:hover { color: white; }
+        .tab-btn.active { border-bottom-color: #3b82f6; color: #60a5fa; background-color: #111827; }
+        .tab-content { display: none; height: 100%; flex-direction: column; }
+        .tab-content.active { display: flex; }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 h-screen flex overflow-hidden" onclick="globalClick()" oncontextmenu="return false;">
+<body class="bg-gray-900 text-gray-100 h-screen flex flex-col overflow-hidden" onclick="globalClick()" oncontextmenu="return false;">
 
-    <!-- 左側工具箱 -->
-    <div class="w-80 flex flex-col border-r border-gray-700 bg-gray-800 z-10 shadow-xl" id="toolbox">
-        <div class="p-4 bg-gray-900 font-bold flex items-center shadow text-yellow-400 border-b border-gray-700">
-            <i data-lucide="cpu" class="mr-2"></i> 積木工具箱
-        </div>
-        <div class="flex flex-wrap gap-1 p-2 bg-gray-800 border-b border-gray-700" id="category-tabs"></div>
-        
-        <div class="flex bg-gray-700 text-xs font-bold border-b border-gray-600">
-            <button onclick="switchMode('blocks')" class="flex-1 py-2 hover:bg-gray-600 border-r border-gray-600 bg-gray-600 text-white" id="tab-blocks">積木庫</button>
-            <button onclick="switchMode('code-in')" class="flex-1 py-2 hover:bg-gray-600 text-gray-400" id="tab-code-in">代碼轉積木</button>
+    <!-- 主要工作區容器 (flex-1) -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- 左側工具箱 -->
+        <div class="w-80 flex flex-col border-r border-gray-700 bg-gray-800 z-10 shadow-xl" id="toolbox">
+            <div class="p-4 bg-gray-900 font-bold flex items-center shadow text-yellow-400 border-b border-gray-700">
+                <i data-lucide="cpu" class="mr-2"></i> 積木工具箱
+            </div>
+            <div class="flex flex-wrap gap-1 p-2 bg-gray-800 border-b border-gray-700" id="category-tabs"></div>
+            
+            <div class="flex bg-gray-700 text-xs font-bold border-b border-gray-600">
+                <button onclick="switchMode('blocks')" class="flex-1 py-2 hover:bg-gray-600 border-r border-gray-600 bg-gray-600 text-white" id="tab-blocks">積木庫</button>
+                <button onclick="switchMode('code-in')" class="flex-1 py-2 hover:bg-gray-600 text-gray-400" id="tab-code-in">代碼轉積木</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-3 space-y-6 custom-scrollbar relative" id="palette"></div>
+
+            <div class="flex-1 flex flex-col p-3 hidden bg-gray-800" id="code-import-panel">
+                <div class="text-xs text-gray-400 mb-2">輸入 C++ 代碼:</div>
+                <textarea id="code-input" class="flex-1 bg-gray-900 border border-gray-600 rounded p-2 text-xs font-mono text-green-300 resize-none outline-none focus:border-blue-500" placeholder="void setup() { ... }"></textarea>
+                <div id="import-error" class="hidden mt-2 p-2 bg-red-900/50 border border-red-500 rounded text-red-200 text-xs break-all"></div>
+                <button onclick="parseAndImportCode()" class="mt-2 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-xs shadow">轉換為積木</button>
+            </div>
+            <div class="p-4 bg-red-900/20 border-t border-red-900/50 text-center text-red-400 text-xs transition-colors" id="trash-zone">
+                <i data-lucide="trash-2" class="mx-auto mb-1"></i> 拖曳至此刪除
+            </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-3 space-y-6 custom-scrollbar relative" id="palette"></div>
-
-        <div class="flex-1 flex flex-col p-3 hidden bg-gray-800" id="code-import-panel">
-            <div class="text-xs text-gray-400 mb-2">C++ 代碼:</div>
-            <textarea id="code-input" class="flex-1 bg-gray-900 border border-gray-600 rounded p-2 text-xs font-mono text-green-300 resize-none outline-none focus:border-blue-500" placeholder="void setup() { ... }"></textarea>
-            <div id="import-error" class="hidden mt-2 p-2 bg-red-900/50 border border-red-500 rounded text-red-200 text-xs break-all"></div>
-            <button onclick="parseAndImportCode()" class="mt-2 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-xs shadow">轉換為積木</button>
+        <!-- 中間工作區 -->
+        <div class="flex-1 flex flex-col bg-[#1e1e1e] relative overflow-hidden">
+            <div class="h-12 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4 shadow-md z-20">
+                <div class="flex items-center text-gray-400 text-sm">
+                    <i data-lucide="mouse-pointer-2" class="mr-2 w-4"></i> 初始化積木限制 | 自動接線
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="deleteSelected()" class="flex items-center text-red-400 hover:bg-red-900/50 px-3 py-1 rounded transition-colors text-sm">
+                        <i data-lucide="trash" class="w-4 h-4 mr-1"></i> 刪除
+                    </button>
+                    <button onclick="resetWorkspace()" class="flex items-center text-gray-300 hover:bg-gray-700 px-3 py-1 rounded transition-colors text-sm">
+                        <i data-lucide="rotate-ccw" class="mr-1 w-4"></i> 重置
+                    </button>
+                </div>
+            </div>
+            <div id="workspace" class="flex-1 overflow-auto p-8 relative grid-bg"></div>
         </div>
-        <div class="p-4 bg-red-900/20 border-t border-red-900/50 text-center text-red-400 text-xs transition-colors" id="trash-zone">
-            <i data-lucide="trash-2" class="mx-auto mb-1"></i> 拖曳至此刪除
+
+        <!-- 右側面板 -->
+        <div class="w-96 bg-gray-950 border-l border-gray-800 flex flex-col z-10 shadow-xl">
+            <div class="flex bg-gray-900 border-b border-gray-800">
+                <div class="tab-btn active" onclick="switchRightTab('code', this)">
+                    <i data-lucide="terminal" class="inline w-4 h-4 mr-1"></i> C++ 代碼
+                </div>
+                <div class="tab-btn" onclick="switchRightTab('hardware', this)">
+                    <i data-lucide="cpu" class="inline w-4 h-4 mr-1"></i> 接線與擴充
+                </div>
+            </div>
+            
+            <div id="content-code" class="tab-content active">
+                <div class="flex-1 overflow-auto p-4 font-mono text-xs text-green-300/90 whitespace-pre-wrap select-text custom-scrollbar bg-[#111]" id="code-preview"></div>
+                <div class="p-4 border-t border-gray-800 bg-gray-900">
+                    <button onclick="copyCode()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-sm transition-colors shadow-lg flex items-center justify-center">
+                        <i data-lucide="copy" class="mr-2 w-4"></i> 複製程式碼
+                    </button>
+                </div>
+            </div>
+
+            <div id="content-hardware" class="tab-content bg-gray-900">
+                <div class="flex-1 overflow-auto p-4 space-y-4 custom-scrollbar" id="hardware-list"></div>
+            </div>
         </div>
     </div>
 
-    <!-- 中間工作區 -->
-    <div class="flex-1 flex flex-col bg-[#1e1e1e] relative overflow-hidden">
-        <div class="h-12 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4 shadow-md z-20">
-            <div class="flex items-center text-gray-400 text-sm">
-                <i data-lucide="mouse-pointer-2" class="mr-2 w-4"></i> 自動初始化與防呆
-            </div>
-            <div class="flex space-x-2">
-                <button onclick="deleteSelected()" class="flex items-center text-red-400 hover:bg-red-900/50 px-3 py-1 rounded transition-colors text-sm">
-                    <i data-lucide="trash" class="w-4 h-4 mr-1"></i> 刪除
-                </button>
-                <button onclick="resetWorkspace()" class="flex items-center text-gray-300 hover:bg-gray-700 px-3 py-1 rounded transition-colors text-sm">
-                    <i data-lucide="rotate-ccw" class="mr-1 w-4"></i> 重置
-                </button>
-            </div>
-        </div>
-        <div id="workspace" class="flex-1 overflow-auto p-8 relative grid-bg"></div>
-    </div>
-
-    <!-- 右側預覽 -->
-    <div class="w-96 bg-gray-950 border-l border-gray-800 flex flex-col z-10 shadow-xl">
-        <div class="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-4 font-mono text-sm text-green-400">
-            <i data-lucide="terminal" class="mr-2 w-4"></i> C++ Code
-        </div>
-        <div class="flex-1 overflow-auto p-4 font-mono text-xs text-green-300/90 whitespace-pre-wrap select-text custom-scrollbar bg-[#111]" id="code-preview"></div>
-        <div class="p-4 border-t border-gray-800 bg-gray-900">
-            <button onclick="copyCode()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-sm transition-colors shadow-lg flex items-center justify-center">
-                <i data-lucide="copy" class="mr-2 w-4"></i> 複製程式碼
-            </button>
-        </div>
+    <!-- 底部版權宣告 -->
+    <div class="h-8 bg-gray-950 border-t border-gray-800 flex items-center justify-center text-[10px] text-gray-500 shrink-0 select-none">
+        版權所有 © 2025&nbsp;<a href="https://60913panda.github.io/PPAW/" target="_blank" class="text-blue-500 hover:text-blue-400 hover:underline">PandaPanda的AI日常</a>&nbsp;All Rights Reserved.
     </div>
 
     <div id="context-menu">
@@ -185,21 +213,31 @@
 
 <script>
     const SHAPES = { HAT: 'HAT', STACK: 'STACK', C_BLOCK: 'C', CAP: 'CAP', REPORTER: 'VAL', BOOLEAN: 'BOOL' };
+
+    const CATEGORIES = {
+        EVENT: { name: '事件 & 初始化', color: 'bg-yellow-500', icon: 'play-circle' },
+        CONTROL: { name: '控制', color: 'bg-orange-500', icon: 'settings' },
+        LOOP: { name: '迴圈', color: 'bg-green-500', icon: 'refresh-cw' },
+        LOGIC: { name: '邏輯', color: 'bg-blue-500', icon: 'git-branch' },
+        MATH: { name: '運算', color: 'bg-green-400', icon: 'plus' },
+        VAR: { name: '變數', color: 'bg-orange-400', icon: 'type' },
+        LIST: { name: '清單', color: 'bg-red-500', icon: 'list' },
+        IO: { name: '硬體', color: 'bg-purple-500', icon: 'cpu' },
+        ADVANCED: { name: '進階', color: 'bg-indigo-500', icon: 'zap' }
+    };
     
     const ADVANCED_HIERARCHY = {
         CUSTOM: {
              name: '自訂代碼',
              color: 'bg-adv-code',
-             components: [
-                 { name: '純文字代碼', blocks: ['RAW_CODE'] }
-             ]
+             components: [ { name: '純文字代碼', blocks: ['RAW_CODE', 'COMMENT'] } ]
         },
         INPUT: {
             name: '輸入模組',
             color: 'bg-adv-input',
             components: [
                 { name: '超音波 (Ultrasonic)', blocks: ['ADV_ULTRASONIC_READ'] },
-                { name: '紅外線 (IR)', blocks: ['ADV_IR_READ'] },
+                { name: '紅外線 (IR)', blocks: ['ADV_IR_INIT', 'ADV_IR_READ'] },
                 { name: '4x4 鍵盤 (Keypad)', blocks: ['ADV_KEYPAD_READ'] },
                 { name: '按鈕 (Button)', blocks: ['ADV_BUTTON_PRESSED'] },
                 { name: '電位器 (Potentiometer)', blocks: ['ADV_POT_READ'] },
@@ -212,29 +250,35 @@
             components: [
                 { name: 'LED / 燈光', blocks: ['LED_SET', 'ADV_LED_BLINK', 'ADV_RGB_SET'] },
                 { name: '繼電器 (Relay)', blocks: ['ADV_RELAY_SET'] },
-                { name: 'LCD 1602 (I2C)', blocks: ['ADV_LCD_PRINT', 'ADV_LCD_CLEAR'] },
-                { name: '七段顯示器 (TM1637)', blocks: ['ADV_TM1637_SHOW'] },
-                { name: '馬達控制', blocks: ['ADV_MOTOR_RUN', 'ADV_SERVO_WRITE'] }
+                { name: 'LCD 1602 (I2C)', blocks: ['ADV_LCD_INIT', 'ADV_LCD_SET_CURSOR', 'ADV_LCD_PRINT', 'ADV_LCD_CLEAR'] },
+                { name: '七段顯示器 (TM1637)', blocks: ['ADV_TM1637_INIT', 'ADV_TM1637_SHOW'] },
+                { name: '馬達控制', blocks: ['ADV_MOTOR_RUN', 'ADV_SERVO_ATTACH', 'ADV_SERVO_WRITE'] }
             ]
         }
     };
 
     const BLOCK_DEFS = {
-        // [事件 & 初始化] - 移至此分類
-        SETUP: { type: 'SETUP', cat: 'EVENT', name: '當 Arduino 開啟', shape: SHAPES.HAT },
-        PIN_MODE: { type: 'PIN_MODE', cat: 'EVENT', name: '設定腳位 ( pin ) 為 * mode *', args: [{type: 'NUM', default: 13}, {type: 'MENU', options: ['OUTPUT', 'INPUT']}], shape: SHAPES.STACK },
-        SERIAL_BEGIN: { type: 'SERIAL_BEGIN', cat: 'EVENT', name: '設定序列埠鮑率 ( rate )', args: [{type: 'NUM', default: 9600}], shape: SHAPES.STACK },
-        ADV_LCD_INIT: { type: 'ADV_LCD_INIT', cat: 'EVENT', name: '初始化 LCD 1602 (I2C)', shape: SHAPES.STACK, color: 'bg-adv-output' },
-        ADV_SERVO_ATTACH: { type: 'ADV_SERVO_ATTACH', cat: 'EVENT', name: '伺服馬達連接腳位 ( pin )', args: [{type: 'NUM', default: 9}], shape: SHAPES.STACK, color: 'bg-adv-output' },
-        ADV_TM1637_INIT: { type: 'ADV_TM1637_INIT', cat: 'EVENT', name: '初始化七段顯示器 CLK:( c ) DIO:( d )', args: [{type: 'NUM', default: 2}, {type: 'NUM', default: 3}], shape: SHAPES.STACK, color: 'bg-adv-output' },
-        ADV_IR_INIT: { type: 'ADV_IR_INIT', cat: 'EVENT', name: '紅外線接收啟用 (Pin: ( p ))', args: [{type: 'NUM', default: 11}], shape: SHAPES.STACK, color: 'bg-adv-input' },
+        // [事件]
+        ARDUINO_INIT: { type: 'ARDUINO_INIT', cat: 'EVENT', name: 'Arduino 初始化 (setup)', shape: SHAPES.HAT, color: 'bg-yellow-500' },
+        ARDUINO_LOOP: { type: 'ARDUINO_LOOP', cat: 'EVENT', name: '當 Arduino 開啟 (loop)', shape: SHAPES.HAT, color: 'bg-yellow-600' },
+
+        // [初始化] - isInit: true
+        PIN_MODE: { type: 'PIN_MODE', cat: 'IO', name: '設定腳位 ( pin ) 為 * mode *', args: [{type: 'NUM', default: 13}, {type: 'MENU', options: ['OUTPUT', 'INPUT']}], shape: SHAPES.STACK, isInit: true },
+        SERIAL_BEGIN: { type: 'SERIAL_BEGIN', cat: 'IO', name: '設定序列埠鮑率 ( rate )', args: [{type: 'NUM', default: 9600}], shape: SHAPES.STACK, isInit: true },
+        ADV_LCD_INIT: { type: 'ADV_LCD_INIT', cat: 'IO', name: '初始化 LCD 1602 地址 * addr *', args: [{type: 'MENU', options: ['0x27', '0x3F']}], shape: SHAPES.STACK, color: 'bg-adv-output', isInit: true },
+        ADV_SERVO_ATTACH: { type: 'ADV_SERVO_ATTACH', cat: 'IO', name: '伺服馬達連接腳位 ( pin )', args: [{type: 'NUM', default: 9}], shape: SHAPES.STACK, color: 'bg-adv-output', isInit: true },
+        ADV_TM1637_INIT: { type: 'ADV_TM1637_INIT', cat: 'IO', name: '初始化七段顯示器 CLK:( c ) DIO:( d )', args: [{type: 'NUM', default: 2}, {type: 'NUM', default: 3}], shape: SHAPES.STACK, color: 'bg-adv-output', isInit: true },
+        ADV_IR_INIT: { type: 'ADV_IR_INIT', cat: 'IO', name: '紅外線接收啟用 (Pin: ( p ))', args: [{type: 'NUM', default: 11}], shape: SHAPES.STACK, color: 'bg-adv-input', isInit: true },
 
         // [控制]
         WAIT: { type: 'WAIT', cat: 'CONTROL', name: '等待 ( time ) 毫秒', args: [{type: 'NUM', default: 1000}], shape: SHAPES.STACK },
         WAIT_UNTIL: { type: 'WAIT_UNTIL', cat: 'CONTROL', name: '等待直到 < cond >', args: [{type: 'BOOL', default: false}], shape: SHAPES.STACK },
-        FOREVER: { type: 'FOREVER', cat: 'LOOP', name: '重複無限次', shape: SHAPES.CAP, isLoop: true },
+        
+        // [迴圈]
         REPEAT: { type: 'REPEAT', cat: 'LOOP', name: '重複 ( times ) 次', args: [{type: 'NUM', default: 10}], shape: SHAPES.C_BLOCK },
         REPEAT_UNTIL: { type: 'REPEAT_UNTIL', cat: 'LOOP', name: '重複直到 < cond >', args: [{type: 'BOOL', default: false}], shape: SHAPES.C_BLOCK },
+        FOR_VAR: { type: 'FOR_VAR', cat: 'LOOP', name: '計次 ( var ) 從 ( start ) 到 ( end ) 改變 ( step )', args: [{type: 'ANY', default: 'i'}, {type: 'NUM', default: 1}, {type: 'NUM', default: 10}, {type: 'NUM', default: 1}], shape: SHAPES.C_BLOCK },
+
         IF: { type: 'IF', cat: 'LOGIC', name: '如果 < cond > 那麼', args: [{type: 'BOOL', default: false}], shape: SHAPES.C_BLOCK },
         IF_ELSE: { type: 'IF_ELSE', cat: 'LOGIC', name: '如果 < cond > 那麼...否則', args: [{type: 'BOOL', default: false}], shape: SHAPES.C_BLOCK, hasElse: true },
         COMPARE: { type: 'COMPARE', cat: 'LOGIC', name: '( a ) * op * ( b )', args: [{type: 'NUM', default: 0}, {type: 'MENU', options: ['==','!=','>','<','>=','<=']}, {type: 'NUM', default: 0}], shape: SHAPES.BOOLEAN },
@@ -260,32 +304,24 @@
 
         // [進階]
         RAW_CODE: { type: 'RAW_CODE', cat: 'ADVANCED', name: '代碼', args: [{type: 'TEXTAREA', default: '// 寫入代碼...'}], shape: SHAPES.STACK, color: 'bg-gray-500' },
+        COMMENT: { type: 'COMMENT', cat: 'ADVANCED', name: '註解: ( text )', args: [{type: 'ANY', default: '...'}], shape: SHAPES.STACK, color: 'bg-yellow-600' },
+
         ADV_ULTRASONIC_READ: { type: 'ADV_ULTRASONIC_READ', cat: 'ADVANCED', name: '讀取超音波距離 (cm) Trig:( t ) Echo:( e )', args: [{type: 'NUM', default: 9}, {type: 'NUM', default: 10}], shape: SHAPES.REPORTER, color: 'bg-adv-input' },
-        ADV_IR_READ: { type: 'ADV_IR_READ', cat: 'ADVANCED', name: '紅外線接收值 (Pin: ( p ))', args: [{type: 'NUM', default: 11}], shape: SHAPES.REPORTER, color: 'bg-adv-input' },
+        ADV_IR_READ: { type: 'ADV_IR_READ', cat: 'ADVANCED', name: '紅外線接收值', shape: SHAPES.REPORTER, color: 'bg-adv-input' },
         ADV_KEYPAD_READ: { type: 'ADV_KEYPAD_READ', cat: 'ADVANCED', name: '讀取 4x4 鍵盤按鍵', shape: SHAPES.REPORTER, color: 'bg-adv-input' },
         ADV_BUTTON_PRESSED: { type: 'ADV_BUTTON_PRESSED', cat: 'ADVANCED', name: '按鈕 (Pin: ( p )) 被按下?', args: [{type: 'NUM', default: 2}], shape: SHAPES.BOOLEAN, color: 'bg-adv-input' },
         ADV_POT_READ: { type: 'ADV_POT_READ', cat: 'ADVANCED', name: '讀取電位器 (Pin: ( p ))', args: [{type: 'NUM', default: 'A0'}], shape: SHAPES.REPORTER, color: 'bg-adv-input' },
         ADV_PHOTO_READ: { type: 'ADV_PHOTO_READ', cat: 'ADVANCED', name: '讀取光敏電阻 (Pin: ( p ))', args: [{type: 'NUM', default: 'A1'}], shape: SHAPES.REPORTER, color: 'bg-adv-input' },
+
         ADV_LED_BLINK: { type: 'ADV_LED_BLINK', cat: 'ADVANCED', name: 'LED 閃爍 (Pin:( p ) 間隔:( ms )ms)', args: [{type: 'NUM', default: 13}, {type: 'NUM', default: 500}], shape: SHAPES.STACK, color: 'bg-adv-output' },
         ADV_RGB_SET: { type: 'ADV_RGB_SET', cat: 'ADVANCED', name: '設定 RGB (R:( r ) G:( g ) B:( b ))', args: [{type: 'NUM', default: 255}, {type: 'NUM', default: 0}, {type: 'NUM', default: 0}], shape: SHAPES.STACK, color: 'bg-adv-output' },
         ADV_RELAY_SET: { type: 'ADV_RELAY_SET', cat: 'ADVANCED', name: '繼電器/燈泡 (Pin: ( p )) * stat *', args: [{type: 'NUM', default: 3}, {type: 'MENU', options: ['開', '關']}], shape: SHAPES.STACK, color: 'bg-adv-output' },
         ADV_LCD_PRINT: { type: 'ADV_LCD_PRINT', cat: 'ADVANCED', name: 'LCD 顯示文字 ( txt )', args: [{type: 'ANY', default: 'Hello'}], shape: SHAPES.STACK, color: 'bg-adv-output' },
+        ADV_LCD_SET_CURSOR: { type: 'ADV_LCD_SET_CURSOR', cat: 'ADVANCED', name: 'LCD 設定游標 (Col:( x ) Row:( y ))', args: [{type: 'NUM', default: 0}, {type: 'NUM', default: 0}], shape: SHAPES.STACK, color: 'bg-adv-output' },
         ADV_LCD_CLEAR: { type: 'ADV_LCD_CLEAR', cat: 'ADVANCED', name: 'LCD 清除畫面', shape: SHAPES.STACK, color: 'bg-adv-output' },
         ADV_TM1637_SHOW: { type: 'ADV_TM1637_SHOW', cat: 'ADVANCED', name: '七段顯示器 顯示 ( num )', args: [{type: 'NUM', default: 1234}], shape: SHAPES.STACK, color: 'bg-adv-output' },
         ADV_MOTOR_RUN: { type: 'ADV_MOTOR_RUN', cat: 'ADVANCED', name: '直流馬達 (Pin: ( p )) 速度 ( spd )', args: [{type: 'NUM', default: 5}, {type: 'NUM', default: 255}], shape: SHAPES.STACK, color: 'bg-adv-output' },
         ADV_SERVO_WRITE: { type: 'ADV_SERVO_WRITE', cat: 'ADVANCED', name: '伺服馬達 (Pin: ( p )) 轉動到 ( deg ) 度', args: [{type: 'NUM', default: 9}, {type: 'NUM', default: 90}], shape: SHAPES.STACK, color: 'bg-adv-output' },
-    };
-
-    const CATEGORIES = {
-        EVENT: { name: '事件 & 初始化', color: 'bg-yellow-500', icon: 'play-circle' },
-        CONTROL: { name: '控制', color: 'bg-orange-500', icon: 'settings' },
-        LOOP: { name: '迴圈', color: 'bg-green-500', icon: 'refresh-cw' },
-        LOGIC: { name: '邏輯', color: 'bg-blue-500', icon: 'git-branch' },
-        MATH: { name: '運算', color: 'bg-green-400', icon: 'plus' },
-        VAR: { name: '變數', color: 'bg-orange-400', icon: 'type' },
-        LIST: { name: '清單', color: 'bg-red-500', icon: 'list' },
-        IO: { name: '硬體', color: 'bg-purple-500', icon: 'cpu' },
-        ADVANCED: { name: '進階', color: 'bg-indigo-500', icon: 'zap' }
     };
 
     let state = { script: [], variables: [], lists: [] };
@@ -327,6 +363,14 @@
         }
     }
 
+    function switchRightTab(tabName, btn) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('content-' + tabName).classList.add('active');
+        if (tabName === 'hardware') generateHardwareInfo();
+    }
+
     function setupEventListeners() {
         const trash = document.getElementById('toolbox');
         const trashZone = document.getElementById('trash-zone');
@@ -354,9 +398,12 @@
                 if (dragData) {
                     const type = dragData.defKey || findBlockType(dragData.id);
                     if (!type || !BLOCK_DEFS[type]) return;
+
                     const def = BLOCK_DEFS[type];
                     let isValid = true;
                     if (def.shape === SHAPES.REPORTER || def.shape === SHAPES.BOOLEAN) isValid = false;
+                    
+                    // Cap limit
                     if (state.script.length > 0) {
                         const lastBlock = state.script[state.script.length - 1];
                         const lastDef = BLOCK_DEFS[lastBlock.type];
@@ -364,6 +411,10 @@
                             if (def.shape !== SHAPES.HAT) isValid = false;
                         }
                     }
+
+                    // Init Limit: Cannot drop init block at end (inside Loop zone)
+                    if (def.isInit) isValid = false;
+
                     if (isValid) ws.classList.add('drop-target');
                     else ws.classList.remove('drop-target');
                 }
@@ -378,13 +429,9 @@
                     const def = BLOCK_DEFS[type];
                     let isValid = true;
                     if (def.shape === SHAPES.REPORTER || def.shape === SHAPES.BOOLEAN) isValid = false;
-                    if (state.script.length > 0) {
-                        const lastBlock = state.script[state.script.length - 1];
-                        const lastDef = BLOCK_DEFS[lastBlock.type];
-                        if (lastDef && lastDef.shape === SHAPES.CAP) {
-                             if (def.shape !== SHAPES.HAT) isValid = false;
-                        }
-                    }
+                    
+                    if (def.isInit) isValid = false;
+
                     if (isValid) handleDrop(dragData, state.script, null, 'APPEND');
                 }
             };
@@ -392,7 +439,10 @@
     }
 
     function resetWorkspace() {
-        state.script = [{ id: 'root-setup', type: 'SETUP', args: [], children: [], elseChildren: [], locked: true }];
+        state.script = [
+            { id: 'root-init', type: 'ARDUINO_INIT', args: [], children: [], elseChildren: [], locked: true },
+            { id: 'root-loop', type: 'ARDUINO_LOOP', args: [], children: [], elseChildren: [], locked: true }
+        ];
         renderWorkspace();
         updateCode();
     }
@@ -457,7 +507,7 @@
                          const compContent = document.createElement('div');
                          compContent.className = 'pl-4 mt-1';
                          comp.blocks.forEach(blockKey => {
-                             compContent.appendChild(createSidebarBlock({ type: blockKey }, subGroup.color));
+                             if (BLOCK_DEFS[blockKey]) compContent.appendChild(createSidebarBlock({ type: blockKey }, subGroup.color));
                          });
                          compDetails.appendChild(compContent);
                          content.appendChild(compDetails);
@@ -483,7 +533,8 @@
                 Object.keys(BLOCK_DEFS).filter(k => BLOCK_DEFS[k].cat === catKey).forEach(key => {
                     const def = BLOCK_DEFS[key];
                     if ((catKey === 'VAR' && def.isVar) || (catKey === 'LIST' && def.type === 'LIST_ITEM')) return;
-                    if (catKey !== 'ADVANCED') section.appendChild(createSidebarBlock({ type: key }, CATEGORIES[catKey].color));
+                    if (catKey === 'EVENT' && (key === 'ARDUINO_INIT' || key === 'ARDUINO_LOOP')) return; 
+                    section.appendChild(createSidebarBlock({ type: key }, CATEGORIES[catKey].color));
                 });
             }
             palette.appendChild(section);
@@ -570,7 +621,7 @@
             el.ondragend = () => { el.classList.remove('dragging'); dragData = null; };
         }
 
-        if (def.shape === SHAPES.STACK || def.shape === SHAPES.C_BLOCK || def.shape === SHAPES.CAP) {
+        if (def.shape === SHAPES.STACK || def.shape === SHAPES.C_BLOCK || def.shape === SHAPES.CAP || def.shape === SHAPES.HAT) {
             el.ondragover = (e) => {
                 e.preventDefault();
                 if (dragData) {
@@ -581,6 +632,20 @@
                     if (dragDef.shape === SHAPES.HAT) return; 
                     if (dragData.id === block.id) return; 
                     if (def.shape === SHAPES.CAP) return;
+                    
+                    // Init Limit Check
+                    if (dragDef.isInit) {
+                        // Must be in root
+                        if (parentList !== state.script) return;
+                        
+                        // Must be BEFORE loop
+                        const myIdx = state.script.indexOf(block);
+                        const loopIdx = state.script.findIndex(b => b.type === 'ARDUINO_LOOP');
+                        // Allow dropping on INIT (index 0) or blocks before Loop
+                        // Disallow dropping on LOOP (index loopIdx) or after
+                        if (myIdx >= loopIdx) return;
+                    }
+
                     e.stopPropagation(); 
                     el.classList.add('drop-target-after');
                 }
@@ -767,6 +832,9 @@
                     const lastDef = BLOCK_DEFS[lastBlock.type];
                     if (lastDef && lastDef.shape === SHAPES.CAP) isValid = false;
                 }
+                
+                // Init blocks cannot be dropped inside C-blocks or anywhere other than root setup
+                if (def.isInit) isValid = false;
 
                 if (isValid) el.classList.add('drop-target');
                 else el.classList.add('drop-target-invalid'); 
@@ -896,6 +964,42 @@
         return null;
     }
 
+    function generateHardwareInfo() {
+        const list = document.getElementById('hardware-list');
+        list.innerHTML = '';
+
+        let components = new Map();
+        
+        const scan = (arr) => {
+            arr.forEach(b => {
+                if (b.type === 'ADV_LCD_INIT') components.set('LCD', {name: 'I2C LCD 1602', wiring: 'SDA->A4, SCL->A5, VCC->5V, GND->GND', lib: 'LiquidCrystal_I2C'});
+                if (b.type === 'ADV_SERVO_ATTACH') components.set(`Servo_${b.args[0]}`, {name: `伺服馬達 (Pin ${b.args[0]})`, wiring: `訊號線->D${b.args[0]}, VCC->5V, GND->GND`, lib: 'Servo'});
+                if (b.type === 'ADV_ULTRASONIC_READ') components.set('Ultrasonic', {name: 'HC-SR04 超音波', wiring: 'Trig->Pin, Echo->Pin, VCC->5V, GND->GND', lib: '無 (原生支援)'});
+                if (b.type === 'ADV_TM1637_INIT') components.set('TM1637', {name: 'TM1637 顯示器', wiring: `CLK->D${b.args[0]}, DIO->D${b.args[1]}`, lib: 'TM1637Display'});
+                
+                if (b.children) scan(b.children);
+                if (b.elseChildren) scan(b.elseChildren);
+            });
+        };
+        scan(state.script);
+
+        if (components.size === 0) {
+            list.innerHTML = `<div class="text-center text-gray-500 mt-10 text-sm"><i data-lucide="info" class="mx-auto mb-2 w-8 h-8 opacity-50"></i><p>尚未檢測到需要特殊接線的元件</p></div>`;
+        } else {
+            components.forEach((info) => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-800 border border-gray-700 p-3 rounded text-xs';
+                card.innerHTML = `
+                    <div class="font-bold text-blue-400 mb-1">${info.name}</div>
+                    <div class="text-gray-300 mb-1"><span class="text-gray-500">接線:</span> ${info.wiring}</div>
+                    <div class="text-gray-300"><span class="text-gray-500">庫:</span> ${info.lib}</div>
+                `;
+                list.appendChild(card);
+            });
+        }
+        lucide.createIcons();
+    }
+
     function selectBlock(id) { selectedBlockIds.add(id); renderWorkspace(); }
     function toggleSelection(id) { if (selectedBlockIds.has(id)) selectedBlockIds.delete(id); else selectedBlockIds.add(id); renderWorkspace(); }
     function clearSelection() { selectedBlockIds.clear(); renderWorkspace(); hideContextMenu(); }
@@ -925,15 +1029,25 @@
     }
     function hideContextMenu() { document.getElementById('context-menu').style.display = 'none'; }
 
-    // --- [V6.4] Auto Init Logic ---
     function checkAndAddInitBlocks() {
         let neededInits = [];
         let existingInits = new Set();
 
+        let setupBlock = state.script.find(b => b.type === 'ARDUINO_INIT');
+        if (!setupBlock) return; 
+        
+        let setupBlockIndex = state.script.findIndex(b => b.type === 'ARDUINO_INIT');
+        let setupStack = [];
+        for (let i = setupBlockIndex + 1; i < state.script.length; i++) {
+            const b = state.script[i];
+            const def = BLOCK_DEFS[b.type];
+            if (def.shape === SHAPES.HAT) break; 
+            setupStack.push(b);
+        }
+
         const scanForNeeds = (arr) => {
             arr.forEach(b => {
                 const args = b.args;
-                // Output Pins
                 if (['LED_SET', 'ADV_LED_BLINK', 'ANALOG_WRITE', 'ADV_RELAY_SET', 'ADV_RGB_SET', 'ADV_MOTOR_RUN'].includes(b.type)) {
                     if(b.type === 'ADV_RGB_SET') {
                          neededInits.push({type: 'PIN_MODE', args: [args[0], 'OUTPUT'], key: `pm_${args[0]}_out`});
@@ -943,15 +1057,13 @@
                          neededInits.push({type: 'PIN_MODE', args: [args[0], 'OUTPUT'], key: `pm_${args[0]}_out`});
                     }
                 }
-                // Input Pins
                 if (['DIGITAL_READ', 'ADV_BUTTON_PRESSED', 'ADV_IR_READ'].includes(b.type)) {
                      neededInits.push({type: 'PIN_MODE', args: [args[0], 'INPUT'], key: `pm_${args[0]}_in`});
                 }
-                // Special
                 if (b.type === 'ADV_SERVO_WRITE') neededInits.push({type: 'ADV_SERVO_ATTACH', args: [args[0]], key: `servo_${args[0]}`});
                 if (b.type === 'ADV_TM1637_SHOW') neededInits.push({type: 'ADV_TM1637_INIT', args: [args[0], args[1]], key: `tm_${args[0]}_${args[1]}`});
                 if (b.type === 'SERIAL_PRINT') neededInits.push({type: 'SERIAL_BEGIN', args: [9600], key: `serial`});
-                if (['ADV_LCD_PRINT', 'ADV_LCD_CLEAR'].includes(b.type)) neededInits.push({type: 'ADV_LCD_INIT', args: [], key: `lcd`});
+                if (['ADV_LCD_PRINT', 'ADV_LCD_CLEAR'].includes(b.type)) neededInits.push({type: 'ADV_LCD_INIT', args: ['0x27', 16, 2], key: `lcd`}); // Default to 0x27
                 if (b.type === 'ADV_IR_READ') neededInits.push({type: 'ADV_IR_INIT', args: [args[0]], key: `ir_${args[0]}`});
 
                 if (b.children) scanForNeeds(b.children);
@@ -971,21 +1083,19 @@
             });
         };
 
+        // Only scan Loop area for needs (usually) but user might drop anywhere
+        // Let's scan full script but filter out the ones already in setupStack
         scanForNeeds(state.script);
-        scanExisting(state.script);
+        scanExisting(setupStack);
 
-        let setupIdx = state.script.findIndex(b => b.type === 'SETUP');
-        if (setupIdx === -1) return;
-
-        // Insert after SETUP
-        let insertIdx = setupIdx + 1;
+        let insertIdx = setupBlockIndex + 1;
         neededInits.forEach(req => {
             if (!existingInits.has(req.key)) {
                 const newBlock = {
                     id: uid(), type: req.type, args: req.args, children: [], elseChildren: []
                 };
                 state.script.splice(insertIdx, 0, newBlock);
-                insertIdx++; // Keep order
+                insertIdx++; 
                 existingInits.add(req.key);
             }
         });
@@ -1002,25 +1112,25 @@
         state.lists.forEach(l => { globals.push(`float ${l}[100];`); globals.push(`int ${l}_len = 0;`); });
         if (state.lists.length) functions += `void list_add(float* l, int* len, float v) { if(*len<100) l[(*len)++] = v; }\nvoid list_del_all(int* len) { *len=0; }\n`;
 
-        // Pre-scan for libraries
         const scanGlobals = (arr) => {
             arr.forEach(b => {
+                const args = b.args;
                 if (b.type === 'ADV_SERVO_ATTACH') {
                     includes.add('#include <Servo.h>');
-                    if(!globals.some(g=>g.includes(`servo_${b.args[0]}`))) globals.push(`Servo servo_${b.args[0]};`);
+                    if(!globals.some(g=>g.includes(`servo_${args[0]}`))) globals.push(`Servo servo_${args[0]};`);
                 }
                 if (b.type === 'ADV_LCD_INIT') {
                     includes.add('#include <Wire.h>');
                     includes.add('#include <LiquidCrystal_I2C.h>');
-                    if(!globals.some(g=>g.includes('lcd'))) globals.push(`LiquidCrystal_I2C lcd(0x27, 16, 2);`);
+                    if(!globals.some(g=>g.includes('lcd'))) globals.push(`LiquidCrystal_I2C lcd(${args[0]}, 16, 2);`);
                 }
                 if (b.type === 'ADV_TM1637_INIT') {
                      includes.add('#include <TM1637Display.h>');
-                     if(!globals.some(g=>g.includes('display'))) globals.push(`TM1637Display display(${b.args[0]}, ${b.args[1]});`);
+                     if(!globals.some(g=>g.includes('display'))) globals.push(`TM1637Display display(${args[0]}, ${args[1]});`);
                 }
                 if (b.type === 'ADV_IR_INIT') {
                     includes.add('#include <IRremote.h>');
-                    if(!globals.some(g=>g.includes('irrecv'))) globals.push(`IRrecv irrecv(${b.args[0]}); decode_results results;`);
+                    if(!globals.some(g=>g.includes('irrecv'))) globals.push(`IRrecv irrecv(${args[0]}); decode_results results;`);
                 }
                 if (b.children) scanGlobals(b.children);
                 if (b.elseChildren) scanGlobals(b.elseChildren);
@@ -1035,6 +1145,8 @@
         const parseBlock = (b) => {
             const args = (b.args || []).map(a => (typeof a === 'object' && a.id) ? parseBlock(a) : a);
             switch(b.type) {
+                case 'ARDUINO_INIT': return '';
+                case 'ARDUINO_LOOP': return '';
                 case 'SETUP': return ''; 
                 case 'RAW_CODE': return `${args[0]}\n`;
                 case 'SERIAL_BEGIN': return `Serial.begin(${args[0]});\n`; 
@@ -1044,6 +1156,10 @@
                 case 'FOREVER': return `// Loop\n${parseChildren(b.children)}`;
                 case 'REPEAT': return `for(int i=0; i<${args[0]}; i++) {\n${parseChildren(b.children)}}\n`;
                 case 'REPEAT_UNTIL': return `while(!(${args[0]})) {\n${parseChildren(b.children)}}\n`;
+                case 'FOR_VAR':
+                    const step = args[3];
+                    const op = (String(step).trim().startsWith('-')) ? '>=' : '<=';
+                    return `for (int ${args[0]} = ${args[1]}; ${args[0]} ${op} ${args[2]}; ${args[0]} += ${step}) {\n${parseChildren(b.children)}}\n`;
                 case 'IF': return `if(${args[0]}) {\n${parseChildren(b.children)}}\n`;
                 case 'IF_ELSE': return `if(${args[0]}) {\n${parseChildren(b.children)}} else {\n${parseChildren(b.elseChildren)}}\n`;
                 case 'NUMBER': return `${args[0]}`;
@@ -1067,21 +1183,28 @@
                 case 'ADV_RELAY_SET': return `digitalWrite(${args[0]}, ${args[1]==='開'?'HIGH':'LOW'});\n`;
                 case 'ADV_LCD_INIT': return `lcd.init(); lcd.backlight();\n`;
                 case 'ADV_LCD_PRINT': return `lcd.print(${args[0]});\n`;
+                case 'ADV_LCD_SET_CURSOR': return `lcd.setCursor(${args[0]}, ${args[1]});\n`;
                 case 'ADV_LCD_CLEAR': return `lcd.clear();\n`;
                 case 'ADV_TM1637_INIT': return `display.setBrightness(0x0f);\n`;
-                case 'ADV_TM1637_SHOW': return `display.showNumberDec(${args[2]});\n`;
+                case 'ADV_TM1637_SHOW': return `display.showNumberDec(${args[0]});\n`;
                 case 'ADV_MOTOR_RUN': return `analogWrite(${args[0]}, ${args[1]});\n`;
                 case 'ADV_SERVO_ATTACH': return `servo_${args[0]}.attach(${args[0]});\n`;
                 case 'ADV_SERVO_WRITE': return `servo_${args[0]}.write(${args[1]});\n`;
+                case 'COMMENT': return `// ${args[0]}\n`;
 
                 default: return `// ${b.type}\n`;
             }
         };
         const parseChildren = (arr) => arr ? arr.map(b => parseBlock(b)).join('') : '';
 
+        let currentSection = 'NONE';
         state.script.forEach(b => {
-            if (b.type === 'FOREVER') loopCode += parseChildren(b.children);
-            else if (b.type !== 'SETUP') setupCode += parseBlock(b);
+            if (b.type === 'ARDUINO_INIT') currentSection = 'SETUP';
+            else if (b.type === 'ARDUINO_LOOP') currentSection = 'LOOP';
+            else {
+                if (currentSection === 'SETUP') setupCode += parseBlock(b);
+                else if (currentSection === 'LOOP') loopCode += parseBlock(b);
+            }
         });
 
         const uniqueGlobals = [...new Set(globals)];
@@ -1097,8 +1220,9 @@
         errDiv.classList.add('hidden'); errDiv.innerText = '';
 
         try {
-            state.script = [];
-            state.script.push({ id: uid(), type: 'SETUP', args: [], children: [], locked: true });
+            state.script = [
+                { id: uid(), type: 'ARDUINO_INIT', args: [], children: [], elseChildren: [], locked: true }
+            ];
 
             const setupMatch = code.match(/void\s+setup\s*\(\s*\)\s*\{([\s\S]*?)\}/);
             const loopMatch = code.match(/void\s+loop\s*\(\s*\)\s*\{([\s\S]*?)\}/);
@@ -1110,19 +1234,38 @@
                     line = line.trim();
                     if (!line) return;
                     
-                    const pm = line.match(/pinMode\s*\(\s*(\d+)\s*,\s*(OUTPUT|INPUT)\s*\)/);
-                    if (pm) {
-                         blocks.push({ id: uid(), type: 'PIN_MODE', args: [pm[1], pm[2]] });
+                    // Skip pure comments that start with //
+                    if (line.startsWith('//')) {
+                         // Optional: Add as comment block
+                         // blocks.push({ id: uid(), type: 'COMMENT', args: [line.substring(2).trim()] });
                          return;
                     }
-                    const sb = line.match(/Serial\.begin\s*\(\s*(\d+)\s*\)/);
-                    if (sb) {
-                         blocks.push({ id: uid(), type: 'SERIAL_BEGIN', args: [sb[1]] });
-                         return;
+
+                    // Ignore auto-generated setup code during import to avoid dupe
+                    if (line.includes('pinMode')) return; 
+                    if (line.includes('Serial.begin')) return;
+                    if (line.includes('lcd.init')) return;
+                    if (line.includes('lcd.backlight')) return;
+                    if (line.includes('servo_')) return; // attach is auto
+
+                    // Detect Advanced Blocks
+                    // LCD
+                    const lcdPrint = line.match(/lcd(_\d+)?\.print\s*\(\s*(.*)\s*\)/);
+                    if (lcdPrint) {
+                        blocks.push({ id: uid(), type: 'ADV_LCD_PRINT', args: [lcdPrint[2].replace(/"/g, '')] });
+                        return;
                     }
-                    const dw = line.match(/digitalWrite\s*\(\s*(\d+)\s*,\s*(HIGH|LOW)\s*\)/);
+                    const lcdCursor = line.match(/lcd(_\d+)?\.setCursor\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/);
+                    if (lcdCursor) {
+                        blocks.push({ id: uid(), type: 'ADV_LCD_SET_CURSOR', args: [lcdCursor[2], lcdCursor[3]] });
+                        return;
+                    }
+                    
+                    // Basic IO
+                    const dw = line.match(/digitalWrite\s*\(\s*(\d+)\s*,\s*(HIGH|LOW|1|0)\s*\)/);
                     if (dw) {
-                        blocks.push({ id: uid(), type: 'LED_SET', args: [dw[1], dw[2] === 'HIGH' ? '亮' : '滅'] });
+                        const val = (dw[2] === 'HIGH' || dw[2] === '1') ? '亮' : '滅';
+                        blocks.push({ id: uid(), type: 'LED_SET', args: [dw[1], val] });
                         return;
                     }
                     const aw = line.match(/analogWrite\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/);
@@ -1135,6 +1278,8 @@
                         blocks.push({ id: uid(), type: 'WAIT', args: [dl[1]] });
                         return;
                     }
+
+                    // Fallback
                     blocks.push({ id: uid(), type: 'RAW_CODE', args: [line + ';'] });
                 });
                 return blocks;
@@ -1144,17 +1289,16 @@
                 const setupBlocks = parseBody(setupMatch[1]);
                 state.script.push(...setupBlocks);
             }
+            
+            state.script.push({ id: uid(), type: 'ARDUINO_LOOP', args: [], children: [], elseChildren: [], locked: true });
+
             if (loopMatch) {
                 const loopBlocks = parseBody(loopMatch[1]);
-                if (loopBlocks.length > 0) {
-                    const foreverBlock = {
-                        id: uid(), type: 'FOREVER', args: [], 
-                        children: loopBlocks, elseChildren: []
-                    };
-                    state.script.push(foreverBlock);
-                }
+                state.script.push(...loopBlocks);
             }
+
             renderWorkspace();
+            checkAndAddInitBlocks(); // Re-calc inits based on imported logic
             updateCode();
             switchMode('blocks');
             alert(`匯入成功！`);
@@ -1164,27 +1308,38 @@
         }
     }
 
-    let modalType = '';
-    function openModal(type) {
-        modalType = type;
-        document.getElementById('modal-title').innerText = type==='VAR'?'新變數':'新清單';
-        document.getElementById('modal-input').value = '';
-        document.getElementById('modal-overlay').classList.remove('hidden');
-    }
-    function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
-    document.getElementById('modal-confirm').onclick = () => {
-        const name = document.getElementById('modal-input').value.trim();
-        if (name) {
-            if (modalType === 'VAR') state.variables.push(name);
-            else state.lists.push(name);
-            renderSidebar();
-        }
-        closeModal();
-    };
-
     function copyCode() {
-        navigator.clipboard.writeText(document.getElementById('code-preview').innerText);
-        alert('已複製');
+        const code = document.getElementById('code-preview').innerText;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(code)
+                .then(() => alert('已複製代碼！'))
+                .catch(err => {
+                    console.error('Clipboard API 失敗:', err);
+                    fallbackCopyText(code);
+                });
+        } else {
+            fallbackCopyText(code);
+        }
+    }
+
+    function fallbackCopyText(text) {
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) alert('已複製代碼！(Fallback)');
+            else alert('複製失敗');
+        } catch (err) {
+            console.error("Fallback copy failed:", err);
+            alert('複製失敗');
+        }
     }
 
     init();
